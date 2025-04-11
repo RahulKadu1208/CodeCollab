@@ -1,8 +1,8 @@
-
 import { useEffect, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { javascript } from "@codemirror/lang-javascript";
+import { cpp } from "@codemirror/lang-cpp";
 import { dracula } from "@uiw/codemirror-theme-dracula";
 import { Button } from "@/components/ui/button";
 import { Play, Save, Share2, RefreshCw } from "lucide-react";
@@ -15,7 +15,11 @@ interface CodeEditorProps {
 }
 
 const CodeEditor = ({ roomId }: CodeEditorProps) => {
-  const [code, setCode] = useState('# Write your Python code here\nprint("Hello, CodeTogether!")\n');
+  const [codeByLanguage, setCodeByLanguage] = useState({
+    python: '# Write your Python code here\nprint("Hello, CodeTogether!")\n',
+    javascript: '// Write your JavaScript code here\nconsole.log("Hello, CodeTogether!");\n',
+    cpp: '// Write your C++ code here\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, CodeTogether!" << std::endl;\n    return 0;\n}\n'
+  });
   const [language, setLanguage] = useState("python");
   const [isExecuting, setIsExecuting] = useState(false);
   const [output, setOutput] = useState("");
@@ -23,13 +27,19 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
   const { toast } = useToast();
   const { socket, connected } = useSocket();
 
+  // Get current code based on selected language
+  const currentCode = codeByLanguage[language as keyof typeof codeByLanguage];
+
   useEffect(() => {
     // Listen for code updates from other users
     if (!socket) return;
 
     const onCodeUpdate = ({ code: newCode, language: newLanguage }: { code: string, language: string }) => {
       console.log('Received code update:', { newCode, newLanguage });
-      setCode(newCode);
+      setCodeByLanguage(prev => ({
+        ...prev,
+        [newLanguage]: newCode
+      }));
       setLanguage(newLanguage);
       setIsLoading(false);
     };
@@ -43,7 +53,10 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
         .then(data => {
           if (data.exists && data.room) {
             console.log('Initial room data:', data.room);
-            setCode(data.room.code);
+            setCodeByLanguage(prev => ({
+              ...prev,
+              [data.room.language]: data.room.code
+            }));
             setLanguage(data.room.language);
           }
           setIsLoading(false);
@@ -65,47 +78,50 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
         return python();
       case "javascript":
         return javascript();
+      case "cpp":
+        return cpp();
       default:
         return python();
     }
   };
 
   const executeCode = () => {
+    if (!socket || !connected) {
+      toast({
+        title: "Cannot execute code",
+        description: "Not connected to server",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsExecuting(true);
     setOutput("");
 
-    // In a real app, this would send the code to a backend service for execution
-    setTimeout(() => {
+    // Emit code execution event to server
+    socket.emit("execute_code", { roomId, code: currentCode, language });
+
+    // Listen for execution result
+    const onExecutionResult = (result: { success: boolean; output: string; error: string | null }) => {
       setIsExecuting(false);
-
-      // Simulate code execution
-      if (language === "python") {
-        if (code.includes("print")) {
-          // Extract content inside print statements
-          const printMatches = code.match(/print\((["'])(.*?)\1\)/g);
-          if (printMatches) {
-            const output = printMatches
-              .map(match => {
-                const content = match.match(/print\((["'])(.*?)\1\)/);
-                return content ? content[2] : "";
-              })
-              .join("\n");
-            setOutput(output);
-          } else {
-            setOutput("No output generated");
-          }
-        } else {
-          setOutput("Code executed successfully with no output");
-        }
+      
+      if (result.success) {
+        setOutput(result.output || "No output generated");
+        toast({
+          title: "Code executed",
+          description: "Your code ran successfully",
+        });
       } else {
-        setOutput("Code executed successfully (JavaScript execution simulation)");
+        setOutput(result.error || "An error occurred while executing the code");
+        toast({
+          title: "Execution failed",
+          description: result.error || "An error occurred while executing the code",
+          variant: "destructive"
+        });
       }
+    };
 
-      toast({
-        title: "Code executed",
-        description: "Your code ran successfully",
-      });
-    }, 1500);
+    socket.once("execution_result", onExecutionResult);
   };
 
   const handleSave = () => {
@@ -119,7 +135,7 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
     }
 
     // Save to backend via socket
-    socket.emit("code_change", { roomId, code, language });
+    socket.emit("code_change", { roomId, code: currentCode, language });
     
     toast({
       title: "Code saved",
@@ -128,11 +144,13 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
   };
 
   const handleCodeChange = (newCode: string) => {
-    setCode(newCode);
+    setCodeByLanguage(prev => ({
+      ...prev,
+      [language]: newCode
+    }));
     
     // Debounce sending updates to avoid overwhelming the server
     if (socket && connected) {
-      // Using a timer would be better for debouncing
       socket.emit("code_change", { roomId, code: newCode, language });
     }
   };
@@ -148,20 +166,13 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
 
   const handleLanguageChange = (value: string) => {
     setLanguage(value);
-    
-    // Provide a template for the selected language
-    if (value === "python") {
-      const newCode = '# Write your Python code here\nprint("Hello, CodeTogether!")\n';
-      setCode(newCode);
-      if (socket && connected) {
-        socket.emit("code_change", { roomId, code: newCode, language: value });
-      }
-    } else if (value === "javascript") {
-      const newCode = '// Write your JavaScript code here\nconsole.log("Hello, CodeTogether!");\n';
-      setCode(newCode);
-      if (socket && connected) {
-        socket.emit("code_change", { roomId, code: newCode, language: value });
-      }
+    // No need to set default template as it's already in the initial state
+    if (socket && connected) {
+      socket.emit("code_change", { 
+        roomId, 
+        code: codeByLanguage[value as keyof typeof codeByLanguage], 
+        language: value 
+      });
     }
   };
 
@@ -185,6 +196,7 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
             <SelectContent>
               <SelectItem value="python">Python</SelectItem>
               <SelectItem value="javascript">JavaScript</SelectItem>
+              <SelectItem value="cpp">C++</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -215,7 +227,7 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
 
       <div className="code-editor border border-border">
         <CodeMirror
-          value={code}
+          value={currentCode}
           height="400px"
           theme={dracula}
           extensions={[getLanguageExtension()]}
