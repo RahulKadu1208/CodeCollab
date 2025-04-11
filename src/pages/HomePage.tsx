@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -7,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { Layout } from "@/components/Layout";
 import { Code2, Users } from "lucide-react";
+import axios from "axios";
 
 const HomePage = () => {
   const { toast } = useToast();
@@ -14,7 +14,7 @@ const HomePage = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [roomName, setRoomName] = useState("");
 
-  const createRoom = () => {
+  const createRoom = async () => {
     if (!roomName.trim()) {
       toast({
         title: "Room name required",
@@ -26,14 +26,24 @@ const HomePage = () => {
 
     setIsCreating(true);
 
-    // Generate a random room ID
-    const roomId = Math.random().toString(36).substring(2, 9);
-
-    // In a real app, this would call the backend API to create a room
-    setTimeout(() => {
+    try {
+      // Call the backend API to create a room with the room name
+      const response = await axios.post('http://localhost:5000/api/rooms', {
+        name: roomName.trim()
+      });
+      const { roomId } = response.data;
+      
       setIsCreating(false);
       navigate(`/room/${roomId}`);
-    }, 1000);
+    } catch (error) {
+      console.error('Error creating room:', error);
+      setIsCreating(false);
+      toast({
+        title: "Error creating room",
+        description: "Failed to create a new room. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

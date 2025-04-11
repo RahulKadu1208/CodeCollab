@@ -1,4 +1,3 @@
-
 const mongoose = require('mongoose');
 
 const RoomSchema = new mongoose.Schema({
@@ -7,6 +6,11 @@ const RoomSchema = new mongoose.Schema({
     required: true,
     unique: true,
     index: true
+  },
+  name: {
+    type: String,
+    required: true,
+    trim: true
   },
   code: {
     type: String,
