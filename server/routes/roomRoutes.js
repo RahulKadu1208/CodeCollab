@@ -1,17 +1,29 @@
-
 const express = require('express');
 const router = express.Router();
 const Room = require('../models/Room');
 const Message = require('../models/Message');
-const { nanoid } = require('nanoid');
+const { v4: uuidv4 } = require('uuid');
 
 // Create a new room
 router.post('/', async (req, res) => {
   try {
-    const roomId = nanoid(8);
-    const newRoom = new Room({ roomId });
+    const { name } = req.body;
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Room name is required' });
+    }
+
+    const roomId = uuidv4();
+    const newRoom = new Room({ 
+      roomId,
+      name: name.trim()
+    });
+    
     await newRoom.save();
-    res.status(201).json({ roomId: newRoom.roomId });
+    res.status(201).json({ 
+      roomId: newRoom.roomId,
+      name: newRoom.name
+    });
   } catch (error) {
     console.error('Error creating room:', error);
     res.status(500).json({ message: 'Error creating room' });
@@ -36,6 +48,7 @@ router.get('/:roomId', async (req, res) => {
       exists: true, 
       room: {
         roomId: room.roomId,
+        name: room.name,
         code: room.code,
         language: room.language,
         createdAt: room.createdAt
