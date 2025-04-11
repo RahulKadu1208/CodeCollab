@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, MicOff, Video, VideoOff, Users } from "lucide-react";
@@ -42,20 +41,6 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
           });
           
           setLocalStream(stream);
-          
-          // Get current user from session storage
-          const currentUser = JSON.parse(sessionStorage.getItem("user") || "{}");
-          if (currentUser.firstName) {
-            const currentParticipant: Participant = {
-              id: currentUser.id || "user1",
-              firstName: currentUser.firstName,
-              lastName: currentUser.lastName,
-              isCurrentUser: true,
-              stream
-            };
-            
-            setParticipants([currentParticipant]);
-          }
         }
       } catch (err) {
         console.error("Error accessing media devices:", err);
@@ -86,7 +71,7 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
       
       // Convert roomUsers to participants
       const updatedParticipants = roomUsers.map(user => {
-        // Check if this is the current user
+        // Check if this is the current user by comparing IDs
         const isCurrentUser = user.id === currentUser.id;
         
         // If this is current user and we have a local stream, use it
@@ -109,6 +94,8 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
       });
       
       setParticipants(updatedParticipants);
+    } else {
+      setParticipants([]);
     }
   }, [roomUsers, localStream]);
 

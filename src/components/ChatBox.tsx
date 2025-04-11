@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,8 +93,7 @@ const ChatBox = ({ roomId }: ChatBoxProps) => {
       // Emit message to server
       socket.emit("send_message", { roomId, message });
       
-      // Add message locally for immediate feedback
-      setMessages((prevMessages) => [...prevMessages, message]);
+      // Clear the input field
       setNewMessage("");
     }
   };

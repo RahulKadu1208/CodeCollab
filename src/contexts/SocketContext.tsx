@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { useToast } from "@/components/ui/use-toast";
@@ -66,6 +65,8 @@ export function SocketProvider({ children }: SocketProviderProps) {
         const storedUser = sessionStorage.getItem("user");
         if (storedUser) {
           const user = JSON.parse(storedUser);
+          // Clear room users before rejoining to prevent duplicates
+          setRoomUsers([]);
           socketInstance.emit("join_room", { roomId: currentRoomId, user });
         }
       }
@@ -95,7 +96,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
     const onUserJoined = ({ user, users }: { user: User, users: User[] }) => {
       console.log('User joined:', user, 'All users:', users);
-      setRoomUsers(users);
+      // Remove duplicates by using a Map with user.id as key
+      const uniqueUsers = Array.from(
+        new Map(users.map(user => [user.id, user])).values()
+      );
+      setRoomUsers(uniqueUsers);
       
       // Don't show toast for the current user
       const currentUser = JSON.parse(sessionStorage.getItem("user") || "{}");
@@ -109,7 +114,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
     const onUserLeft = ({ user, users }: { user: User, users: User[] }) => {
       console.log('User left:', user, 'Remaining users:', users);
-      setRoomUsers(users);
+      // Remove duplicates by using a Map with user.id as key
+      const uniqueUsers = Array.from(
+        new Map(users.map(user => [user.id, user])).values()
+      );
+      setRoomUsers(uniqueUsers);
       
       toast({
         title: "User Left",
@@ -143,6 +152,8 @@ export function SocketProvider({ children }: SocketProviderProps) {
     
     setIsConnecting(true);
     setCurrentRoomId(roomId);
+    // Clear room users before joining to prevent duplicates
+    setRoomUsers([]);
     
     // Connect if not already connected
     if (!socket.connected) {
