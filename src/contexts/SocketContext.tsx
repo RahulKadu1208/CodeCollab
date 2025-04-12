@@ -23,7 +23,7 @@ type SocketContextType = {
 };
 
 // In a production environment, this would be configured via environment variables
-const SOCKET_URL = "http://localhost:5000";
+const SOCKET_URL = "https://codecollab-gfyu.onrender.com";
 
 const SocketContext = createContext<SocketContextType>({
   socket: null,

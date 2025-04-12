@@ -28,7 +28,7 @@ const HomePage = () => {
 
     try {
       // Call the backend API to create a room with the room name
-      const response = await axios.post('http://localhost:5000/api/rooms', {
+      const response = await axios.post('https://codecollab-gfyu.onrender.com/api/rooms', {
         name: roomName.trim()
       });
       const { roomId } = response.data;
