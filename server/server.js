@@ -26,6 +26,9 @@ const io = new Server(server, config.SOCKET.OPTIONS);
 app.use(cors(config.CORS));
 app.use(express.json());
 
+// Handle OPTIONS requests
+app.options('*', cors(config.CORS));
+
 // API Routes
 app.use('/api/rooms', roomRoutes);
 

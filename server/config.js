@@ -13,8 +13,8 @@ module.exports = {
     URL: 'https://code-collab-alpha.vercel.app',
     OPTIONS: {
       cors: {
-        origin: 'https://code-collab-alpha.vercel.app',
-        methods: ['GET', 'POST'],
+        origin: ['https://code-collab-alpha.vercel.app', 'https://code-collab-6arg0azgh-rahuls-projects-53337cbd.vercel.app'],
+        methods: ['GET', 'POST', 'OPTIONS'],
         credentials: true,
       },
     },
@@ -22,9 +22,10 @@ module.exports = {
 
   // CORS Configuration
   CORS: {
-    origin: 'https://code-collab-alpha.vercel.app',
-    methods: ['GET', 'POST'],
+    origin: ['https://code-collab-alpha.vercel.app', 'https://code-collab-6arg0azgh-rahuls-projects-53337cbd.vercel.app'],
+    methods: ['GET', 'POST', 'OPTIONS'],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
   },
 
   // MongoDB Configuration
