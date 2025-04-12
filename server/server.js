@@ -42,6 +42,16 @@ app.get('*', (req, res) => {
     return res.status(404).json({ error: 'Not found' });
   }
   
+  // Handle room routes
+  if (req.path.startsWith('/room/')) {
+    return res.sendFile(path.join(__dirname, '../dist/index.html'));
+  }
+  
+  // Handle join routes
+  if (req.path.startsWith('/join/')) {
+    return res.sendFile(path.join(__dirname, '../dist/index.html'));
+  }
+  
   // Serve index.html for all other routes
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
