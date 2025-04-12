@@ -27,9 +27,7 @@ const HomePage = () => {
     setIsCreating(true);
 
     try {
-      // Call the backend API to create a room with the room name
-      console.log("🚀 ~ createRoom ~ ${process.env.REACT_APP_BACKEND_URL}/api/rooms:", `https://codecollab-gfyu.onrender.com/api/rooms`)
-      const response = await axios.post(`https://codecollab-gfyu.onrender.com/api/rooms`, {
+      const response = await axios.post('https://codecollab-gfyu.onrender.com/api/rooms', {
         name: roomName.trim()
       });
       const { roomId } = response.data;

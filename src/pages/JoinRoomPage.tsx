@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +14,37 @@ const JoinRoomPage = () => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [isJoining, setIsJoining] = useState(false);
+  const [roomExists, setRoomExists] = useState<boolean | null>(null);
+
+  // Check if room exists when component mounts
+  useEffect(() => {
+    const checkRoom = async () => {
+      try {
+        const response = await fetch(`https://codecollab-gfyu.onrender.com/api/rooms/${roomId}`);
+        const data = await response.json();
+        setRoomExists(data.exists);
+        
+        if (!data.exists) {
+          toast({
+            title: "Room not found",
+            description: "The room you're trying to join doesn't exist",
+            variant: "destructive",
+          });
+          navigate("/");
+        }
+      } catch (error) {
+        console.error('Error checking room:', error);
+        toast({
+          title: "Error",
+          description: "Failed to check room existence",
+          variant: "destructive",
+        });
+        navigate("/");
+      }
+    };
+
+    checkRoom();
+  }, [roomId, navigate, toast]);
 
   const handleJoin = () => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -28,18 +58,34 @@ const JoinRoomPage = () => {
 
     setIsJoining(true);
 
-    // In a real app, this would send the user data to the backend
-    setTimeout(() => {
-      // Store user info in session storage (would be handled better in a real app)
-      sessionStorage.setItem(
-        "user",
-        JSON.stringify({ firstName, lastName, id: Date.now().toString() })
-      );
-      
-      setIsJoining(false);
-      navigate(`/room/${roomId}`);
-    }, 1000);
+    // Store user info in session storage
+    sessionStorage.setItem(
+      "user",
+      JSON.stringify({ firstName, lastName, id: Date.now().toString() })
+    );
+    
+    setIsJoining(false);
+    navigate(`/room/${roomId}`);
   };
+
+  if (roomExists === null) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] p-4">
+          <Card className="w-full max-w-lg border border-border">
+            <CardContent className="flex flex-col items-center justify-center p-6">
+              <div className="h-8 w-8 rounded-full border-2 border-t-transparent border-primary animate-spin mb-4"></div>
+              <p>Checking room...</p>
+            </CardContent>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!roomExists) {
+    return null; // Will redirect to home page due to useEffect
+  }
 
   return (
     <Layout>
