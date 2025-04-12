@@ -48,7 +48,7 @@ const CodeEditor = ({ roomId }: CodeEditorProps) => {
 
     // Fetch initial code if joining an existing room
     if (connected && roomId) {
-      fetch(`http://localhost:5000/api/rooms/${roomId}`)
+      fetch(`${process.env.REACT_APP_BACKEND_URL}/api/rooms/${roomId}`)
         .then(res => res.json())
         .then(data => {
           if (data.exists && data.room) {

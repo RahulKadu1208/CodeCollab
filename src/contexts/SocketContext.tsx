@@ -23,7 +23,7 @@ type SocketContextType = {
 };
 
 // In a production environment, this would be configured via environment variables
-const SOCKET_URL = "http://localhost:5000";
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL;
 
 const SocketContext = createContext<SocketContextType>({
   socket: null,
