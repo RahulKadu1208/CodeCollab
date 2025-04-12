@@ -14,6 +14,7 @@ interface User {
 interface Participant extends User {
   isCurrentUser?: boolean;
   stream?: MediaStream | null;
+  peerConnection?: RTCPeerConnection;
 }
 
 interface VideoChatProps {
@@ -29,8 +30,51 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
   const { toast } = useToast();
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const streamRef = useRef<MediaStream | null>(null);
+  const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
 
-  // Get local media stream
+  // Configuration for WebRTC
+  const configuration: RTCConfiguration = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  // Create and set up peer connection
+  const createPeerConnection = (userId: string) => {
+    const peerConnection = new RTCPeerConnection(configuration);
+    peerConnections.current[userId] = peerConnection;
+
+    // Add local tracks to the peer connection
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+      });
+    }
+
+    // Handle incoming tracks
+    peerConnection.ontrack = (event) => {
+      const stream = event.streams[0];
+      setParticipants(prev => prev.map(p => 
+        p.id === userId ? { ...p, stream } : p
+      ));
+    };
+
+    // Handle ICE candidates
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket?.emit('ice_candidate', {
+          roomId,
+          candidate: event.candidate,
+          targetUserId: userId
+        });
+      }
+    };
+
+    return peerConnection;
+  };
+
+  // Initialize media and set up socket listeners
   useEffect(() => {
     let stream: MediaStream | null = null;
     
@@ -54,30 +98,66 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
         });
       }
     };
-    
-    initializeMedia();
-    
-    return () => {
-      // Clean up media streams when component unmounts
-      if (stream) {
-        stream.getTracks().forEach(track => {
-          track.stop();
-        });
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => {
-          track.stop();
-        });
+
+    const handleOffer = async ({ offer, userId }: { offer: RTCSessionDescriptionInit, userId: string }) => {
+      const peerConnection = createPeerConnection(userId);
+      
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      
+      socket?.emit('answer', {
+        roomId,
+        answer,
+        targetUserId: userId
+      });
+    };
+
+    const handleAnswer = async ({ answer, userId }: { answer: RTCSessionDescriptionInit, userId: string }) => {
+      const peerConnection = peerConnections.current[userId];
+      if (peerConnection) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
       }
     };
-  }, [toast]);
 
-  // Update participants when roomUsers changes
+    const handleIceCandidate = async ({ candidate, userId }: { candidate: RTCIceCandidateInit, userId: string }) => {
+      const peerConnection = peerConnections.current[userId];
+      if (peerConnection) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    };
+
+    initializeMedia();
+
+    // Set up socket listeners
+    socket?.on('offer', handleOffer);
+    socket?.on('answer', handleAnswer);
+    socket?.on('ice_candidate', handleIceCandidate);
+
+    return () => {
+      // Clean up media streams and socket listeners
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      
+      // Close all peer connections
+      Object.values(peerConnections.current).forEach(pc => pc.close());
+      peerConnections.current = {};
+
+      socket?.off('offer', handleOffer);
+      socket?.off('answer', handleAnswer);
+      socket?.off('ice_candidate', handleIceCandidate);
+    };
+  }, [socket, roomId, toast]);
+
+  // Update participants and create peer connections
   useEffect(() => {
     if (roomUsers.length > 0) {
       const currentUser = JSON.parse(sessionStorage.getItem("user") || "{}");
       
-      // Convert roomUsers to participants
       const updatedParticipants = roomUsers.map(user => {
         const isCurrentUser = user.id === currentUser.id;
         
@@ -87,6 +167,23 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
             isCurrentUser: true,
             stream: localStream
           };
+        }
+        
+        // Create peer connection for new users
+        if (!isCurrentUser && !peerConnections.current[user.id]) {
+          const peerConnection = createPeerConnection(user.id);
+          
+          // Create and send offer
+          peerConnection.createOffer()
+            .then(offer => peerConnection.setLocalDescription(offer))
+            .then(() => {
+              socket?.emit('offer', {
+                roomId,
+                offer: peerConnection.localDescription,
+                targetUserId: user.id
+              });
+            })
+            .catch(console.error);
         }
         
         return {
@@ -100,7 +197,7 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
     } else {
       setParticipants([]);
     }
-  }, [roomUsers, localStream]);
+  }, [roomUsers, localStream, socket, roomId]);
 
   // Update video elements when participants change
   useEffect(() => {

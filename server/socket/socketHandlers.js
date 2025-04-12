@@ -72,6 +72,19 @@ const setupSocketHandlers = (io) => {
         console.error('Error in join_room:', error);
       }
     });
+
+    // WebRTC Signaling Handlers
+    socket.on('offer', ({ roomId, offer, targetUserId }) => {
+      socket.to(targetUserId).emit('offer', { offer, userId: socket.id });
+    });
+
+    socket.on('answer', ({ roomId, answer, targetUserId }) => {
+      socket.to(targetUserId).emit('answer', { answer, userId: socket.id });
+    });
+
+    socket.on('ice_candidate', ({ roomId, candidate, targetUserId }) => {
+      socket.to(targetUserId).emit('ice_candidate', { candidate, userId: socket.id });
+    });
     
     // Handle code execution
     socket.on('execute_code', async ({ roomId, code, language }) => {
@@ -251,7 +264,7 @@ const setupSocketHandlers = (io) => {
       }
       
       // Broadcast user left event
-      io.to(roomId).emit('user_left', { userId: socket.id, user, users: roomUsers });
+      io.to(roomId).emit('user_left', { user, users: roomUsers });
     } catch (error) {
       console.error('Error in handleUserLeaving:', error);
     }
