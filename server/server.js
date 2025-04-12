@@ -18,7 +18,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:8080", // Frontend URL
+    origin: "https://code-collab-alpha.vercel.app/", // Frontend URL
     methods: ["GET", "POST"],
     credentials: true
   }
