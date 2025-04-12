@@ -28,6 +28,7 @@ const HomePage = () => {
 
     try {
       // Call the backend API to create a room with the room name
+      console.log("🚀 ~ createRoom ~ ${process.env.REACT_APP_BACKEND_URL}/api/rooms:", `${process.env.REACT_APP_BACKEND_URL}/api/rooms`)
       const response = await axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/rooms`, {
         name: roomName.trim()
       });
