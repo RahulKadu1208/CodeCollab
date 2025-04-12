@@ -49,7 +49,7 @@ const ChatBox = ({ roomId }: ChatBoxProps) => {
     // Fetch chat history if we don't get it from socket in a reasonable time
     const fetchMessagesFallback = setTimeout(() => {
       if (isLoading) {
-        fetch(`http://localhost:5000/api/rooms/${roomId}/messages`)
+        fetch(`${process.env.REACT_APP_BACKEND_URL}/api/rooms/${roomId}/messages`)
           .then(res => res.json())
           .then(data => {
             console.log('Fetched messages via HTTP:', data);
