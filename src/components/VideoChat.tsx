@@ -28,18 +28,21 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
   const { socket, roomUsers } = useSocket();
   const { toast } = useToast();
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Get local media stream
   useEffect(() => {
-    // Initialize user media
+    let stream: MediaStream | null = null;
+    
     const initializeMedia = async () => {
       try {
         if (navigator.mediaDevices?.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ 
+          stream = await navigator.mediaDevices.getUserMedia({ 
             video: true, 
             audio: true 
           });
           
+          streamRef.current = stream;
           setLocalStream(stream);
         }
       } catch (err) {
@@ -56,8 +59,13 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
     
     return () => {
       // Clean up media streams when component unmounts
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
+      if (stream) {
+        stream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
           track.stop();
         });
       }
@@ -71,10 +79,8 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
       
       // Convert roomUsers to participants
       const updatedParticipants = roomUsers.map(user => {
-        // Check if this is the current user by comparing IDs
         const isCurrentUser = user.id === currentUser.id;
         
-        // If this is current user and we have a local stream, use it
         if (isCurrentUser && localStream) {
           return {
             ...user,
@@ -83,9 +89,6 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
           };
         }
         
-        // For other users, we would set up WebRTC connection
-        // in a real implementation. For now, just display them
-        // without video
         return {
           ...user,
           isCurrentUser: false,
@@ -102,8 +105,9 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
   // Update video elements when participants change
   useEffect(() => {
     participants.forEach(participant => {
-      if (participant.stream && videoRefs.current[participant.id]) {
-        videoRefs.current[participant.id]!.srcObject = participant.stream;
+      const videoElement = videoRefs.current[participant.id];
+      if (participant.stream && videoElement) {
+        videoElement.srcObject = participant.stream;
       }
     });
   }, [participants]);
@@ -111,19 +115,21 @@ const VideoChat = ({ roomId }: VideoChatProps) => {
   // Toggle mic/video functions
   const toggleMic = () => {
     if (localStream) {
+      const newState = !isMicOn;
       localStream.getAudioTracks().forEach(track => {
-        track.enabled = !isMicOn;
+        track.enabled = newState;
       });
-      setIsMicOn(!isMicOn);
+      setIsMicOn(newState);
     }
   };
 
   const toggleVideo = () => {
     if (localStream) {
+      const newState = !isVideoOn;
       localStream.getVideoTracks().forEach(track => {
-        track.enabled = !isVideoOn;
+        track.enabled = newState;
       });
-      setIsVideoOn(!isVideoOn);
+      setIsVideoOn(newState);
     }
   };
 

@@ -34,7 +34,7 @@ const HomePage = () => {
       const { roomId } = response.data;
       
       setIsCreating(false);
-      navigate(`/room/${roomId}`);
+      navigate(`/join/${roomId}`);
     } catch (error) {
       console.error('Error creating room:', error);
       setIsCreating(false);

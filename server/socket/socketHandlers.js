@@ -1,26 +1,21 @@
-
-const { createClient } = require('redis');
+const { Redis } = require('@upstash/redis');
 const Room = require('../models/Room');
 const Message = require('../models/Message');
-
-let redisClient;
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 // Initialize Redis client
-(async () => {
-  redisClient = createClient({
-    url: process.env.REDIS_URI || 'redis://localhost:6379'
-  });
+const redisClient = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
-  redisClient.on('error', (err) => {
-    console.error('Redis error:', err);
-  });
-
-  await redisClient.connect().catch(err => {
-    console.error('Redis connection error:', err);
-  });
-
-  console.log('Connected to Redis');
-})();
+// Create a temporary directory for code execution
+const tempDir = path.join(__dirname, '../temp');
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir);
+}
 
 const setupSocketHandlers = (io) => {
   io.on('connection', (socket) => {
@@ -33,11 +28,24 @@ const setupSocketHandlers = (io) => {
         socket.join(roomId);
         
         // Store user in Redis for the room
-        await redisClient.hSet(`room:${roomId}:users`, socket.id, JSON.stringify(user));
+        await redisClient.set(`room:${roomId}:users:${socket.id}`, JSON.stringify(user));
         
         // Get all users in room
-        const roomUsersData = await redisClient.hGetAll(`room:${roomId}:users`);
-        const roomUsers = Object.values(roomUsersData).map(userData => JSON.parse(userData));
+        const keys = await redisClient.keys(`room:${roomId}:users:*`);
+        const roomUsers = [];
+        
+        for (const key of keys) {
+          const userData = await redisClient.get(key);
+          if (userData) {
+            try {
+              const parsedUser = typeof userData === 'string' ? JSON.parse(userData) : userData;
+              roomUsers.push(parsedUser);
+            } catch (parseError) {
+              console.error('Error parsing user data:', parseError);
+              continue;
+            }
+          }
+        }
         
         // Update room's lastActive timestamp in MongoDB
         await Room.findOneAndUpdate(
@@ -56,12 +64,72 @@ const setupSocketHandlers = (io) => {
         const room = await Room.findOne({ roomId });
         if (room) {
           socket.emit('code_update', { 
-            code: room.code,
-            language: room.language
+            code: room.code || '# Write your code here',
+            language: room.language || 'javascript'
           });
         }
       } catch (error) {
         console.error('Error in join_room:', error);
+      }
+    });
+    
+    // Handle code execution
+    socket.on('execute_code', async ({ roomId, code, language }) => {
+      try {
+        // Create a temporary file
+        const tempFile = path.join(tempDir, `temp_${Date.now()}.${language}`);
+        fs.writeFileSync(tempFile, code);
+        
+        let command;
+        switch (language) {
+          case 'javascript':
+            command = `node ${tempFile}`;
+            break;
+          case 'python':
+            command = `python3 ${tempFile}`;
+            break;
+          case 'cpp':
+            // Compile and run C++ code
+            const executable = tempFile.replace('.cpp', '');
+            command = `g++ ${tempFile} -o ${executable} && ${executable}`;
+            break;
+          default:
+            throw new Error('Unsupported language');
+        }
+        
+        // Execute the code
+        exec(command, (error, stdout, stderr) => {
+          // Clean up the temporary files
+          fs.unlinkSync(tempFile);
+          if (language === 'cpp') {
+            const executable = tempFile.replace('.cpp', '');
+            if (fs.existsSync(executable)) {
+              fs.unlinkSync(executable);
+            }
+          }
+          
+          if (error) {
+            socket.emit('execution_result', {
+              success: false,
+              output: error.message,
+              error: stderr
+            });
+            return;
+          }
+          
+          socket.emit('execution_result', {
+            success: true,
+            output: stdout,
+            error: null
+          });
+        });
+      } catch (error) {
+        console.error('Error executing code:', error);
+        socket.emit('execution_result', {
+          success: false,
+          output: null,
+          error: error.message
+        });
       }
     });
     
@@ -89,6 +157,17 @@ const setupSocketHandlers = (io) => {
     // Handle code updates
     socket.on('code_change', async ({ roomId, code, language }) => {
       try {
+        // Validate code and language
+        if (!code || typeof code !== 'string') {
+          console.error('Invalid code format');
+          return;
+        }
+        
+        if (!language || typeof language !== 'string') {
+          console.error('Invalid language format');
+          return;
+        }
+        
         // Save code state to MongoDB
         await Room.findOneAndUpdate(
           { roomId },
@@ -119,15 +198,12 @@ const setupSocketHandlers = (io) => {
       
       // Find which rooms the user was in by checking Redis
       try {
-        // Scan all keys that match the pattern room:*:users
-        for await (const key of redisClient.scanIterator({ MATCH: 'room:*:users' })) {
+        // Get all room keys
+        const keys = await redisClient.keys(`room:*:users:${socket.id}`);
+        
+        for (const key of keys) {
           const roomId = key.split(':')[1]; // Extract roomId from key
-          
-          // Check if this user was in this room
-          const exists = await redisClient.hExists(key, socket.id);
-          if (exists) {
-            await handleUserLeaving(socket, roomId);
-          }
+          await handleUserLeaving(socket, roomId);
         }
       } catch (error) {
         console.error('Error handling disconnection:', error);
@@ -139,20 +215,40 @@ const setupSocketHandlers = (io) => {
   async function handleUserLeaving(socket, roomId) {
     try {
       // Get user data before removing
-      const userData = await redisClient.hGet(`room:${roomId}:users`, socket.id);
+      const userData = await redisClient.get(`room:${roomId}:users:${socket.id}`);
       if (!userData) return;
       
-      const user = JSON.parse(userData);
+      // Check if userData is already an object or needs parsing
+      let user;
+      try {
+        user = typeof userData === 'string' ? JSON.parse(userData) : userData;
+      } catch (parseError) {
+        console.error('Error parsing user data:', parseError);
+        return;
+      }
       
       // Remove user from Redis
-      await redisClient.hDel(`room:${roomId}:users`, socket.id);
+      await redisClient.del(`room:${roomId}:users:${socket.id}`);
       
       // Leave the socket room
       socket.leave(roomId);
       
       // Get updated users list
-      const roomUsersData = await redisClient.hGetAll(`room:${roomId}:users`);
-      const roomUsers = Object.values(roomUsersData).map(userData => JSON.parse(userData));
+      const keys = await redisClient.keys(`room:${roomId}:users:*`);
+      const roomUsers = [];
+      
+      for (const key of keys) {
+        const userData = await redisClient.get(key);
+        if (userData) {
+          try {
+            const parsedUser = typeof userData === 'string' ? JSON.parse(userData) : userData;
+            roomUsers.push(parsedUser);
+          } catch (parseError) {
+            console.error('Error parsing user data:', parseError);
+            continue;
+          }
+        }
+      }
       
       // Broadcast user left event
       io.to(roomId).emit('user_left', { userId: socket.id, user, users: roomUsers });
